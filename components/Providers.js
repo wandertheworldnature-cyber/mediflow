@@ -1,11 +1,11 @@
 'use client';
 import { LangProvider } from '@/components/LangContext';
-import { SessionProvider } from '@/components/SessionContext';
+import { AuthProvider } from '@/components/AuthContext';
 
 export function Providers({ children }) {
   return (
-    <SessionProvider>
+    <AuthProvider>
       <LangProvider>{children}</LangProvider>
-    </SessionProvider>
+    </AuthProvider>
   );
 }

@@ -8,29 +8,35 @@ import { useRealtimeTable } from '@/hooks/useRealtimeTable';
 import { api } from '@/lib/api';
 import { I } from '@/components/icons';
 
-// Demo doctor: in a real auth system this would come from the session.
-// We just pick the first seeded doctor (Dr. Srinivas Rao) for this app.
-const DEMO_DOCTOR_NAME = 'Dr. Srinivas Rao';
-
 export default function DoctorPage() {
-  const { ready } = useRequireRole('doctor');
+  const { ready, session } = useRequireRole('doctor');
   const toast = useToast();
   const [tab, setTab] = useState('queue');
   const [activeAppt, setActiveAppt] = useState(null);
   const [doctor, setDoctor] = useState(null);
+  const [loadingDoctor, setLoadingDoctor] = useState(true);
 
   useEffect(() => {
+    if (!ready || !session?.doctorId) return;
     api('/doctors').then((docs) => {
-      setDoctor((docs || []).find((d) => d.name === DEMO_DOCTOR_NAME) || docs?.[0] || null);
-    }).catch(() => {});
-  }, []);
+      setDoctor((docs || []).find((d) => d.id === session.doctorId) || null);
+    }).catch((err) => toast.show(err.message, 'error')).finally(() => setLoadingDoctor(false));
+  }, [ready, session?.doctorId]);
 
   const tabs = [
     { id: 'queue', label: 'Today', te: 'ఈరోజు' },
     { id: 'scribe', label: 'AI Scribe', te: 'AI స్క్రైబ్' },
   ];
 
-  if (!ready || !doctor) return <CenterLoader label="Loading…" labelTe="లోడ్ అవుతోంది…" />;
+  if (!ready || loadingDoctor) return <CenterLoader label="Loading…" labelTe="లోడ్ అవుతోంది…" />;
+
+  if (!doctor) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-500)' }}>
+        <T en="Your account isn't linked to a doctor profile yet. Contact your hospital admin." te="మీ ఖాతా ఇంకా డాక్టర్ ప్రొఫైల్‌తో లింక్ చేయబడలేదు. మీ హాస్పిటల్ అడ్మిన్‌ని సంప్రదించండి." />
+      </div>
+    );
+  }
 
   return (
     <>

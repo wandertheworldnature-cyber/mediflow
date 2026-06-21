@@ -1,36 +1,60 @@
 # MediFlow — Smart Hospital Management System
 
-A real, working hospital management web app: Admin panel, Doctor app, Nurse app,
-and Patient app, sharing one live Supabase database, with real AI features
+A real, multi-hospital SaaS: Super Admin onboards hospitals, each hospital
+gets its own Admin/Doctor/Nurse/Patient apps backed by one shared Supabase
+database, with real email/password authentication and real AI features
 powered by Groq (AI Medical Scribe, AI diagnosis suggestions, AI Health
 Assistant chat in English/Telugu).
 
-This is a genuine starting point for a real product — not a mockup. Read the
-**"What's real vs. what's still a demo"** section below before showing this
-to real patients or putting in real medical data.
+Read **"What's real vs. what's still a demo"** below before using this with
+real patient data.
 
 ---
 
 ## 1. What you need (both free)
 
-1. **Supabase account** — https://supabase.com → New Project (free tier is enough)
-2. **Groq API key** — https://console.groq.com/keys (free tier, generous limits)
-3. **Node.js 18.18+** installed locally — https://nodejs.org
+1. **Supabase account** — https://supabase.com → New Project
+2. **Groq API key** — https://console.groq.com/keys
+3. **Node.js 18.18+** — https://nodejs.org
 
 ---
 
-## 2. Set up the database
+## 2. Set up the database (two SQL files now, in order)
 
-1. In your new Supabase project, go to **SQL Editor → New query**.
-2. Open `supabase/schema.sql` from this project, copy the entire contents, paste into the SQL editor, and click **Run**.
-3. This creates every table (patients, doctors, appointments, beds, wards, prescriptions, etc.), sets up permissive demo-friendly access policies, and seeds it with sample doctors, wards/beds, pharmacy stock, and a few patients.
-4. Go to **Project Settings → API**. You'll need three values for the next step:
-   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public` key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `service_role` key (click "Reveal") → `SUPABASE_SERVICE_ROLE_KEY` — **keep this secret, never put it in client-side code or commit it**
+1. Supabase Dashboard → **SQL Editor** → New query
+2. Paste the entire contents of **`supabase/schema_v2.sql`** → Run.
+   This creates the hospitals table, user_profiles, every domain table
+   (now with `hospital_id`), all RLS policies, the auto-profile-creation
+   trigger for new signups, and seeds one demo hospital
+   ("Sri Sai Multispeciality Hospital").
+3. New query → paste **`supabase/seed_demo_hospital.sql`** → Run.
+   This attaches sample doctors, wards/beds, pharmacy stock, and a few
+   patients to that demo hospital, so you have something to look at
+   immediately.
 
-### Turning on Realtime (so updates appear live across roles)
-Go to **Database → Replication** in Supabase, and make sure the tables you care about most (`beds`, `appointments`, `patients`, `nurse_tasks`, `health_records`) have replication toggled on. If you skip this, the app still works — it just falls back to polling every 15 seconds instead of instant updates.
+   > If you ran the old single-hospital `schema.sql` from a previous
+   > version of this project, **don't run `schema_v2.sql` on top of it** —
+   > start with a fresh Supabase project instead, since the table shapes
+   > changed (every table now has `hospital_id`).
+
+4. **Project Settings → API** — copy 3 values for the next step (Project URL, anon public key, service_role key).
+
+### Creating your first Super Admin account
+Super Admin can't be created through the public signup form on purpose —
+you don't want random visitors signing themselves up with platform-wide
+access. Instead:
+
+1. Run the app (see step 4 below) and sign up normally once, through any
+   path (e.g. "I'm setting up a new hospital").
+2. In Supabase Dashboard → **Authentication → Users**, find your new user
+   and copy their ID.
+3. Go to **SQL Editor** and run:
+   ```sql
+   update user_profiles set role = 'super_admin', hospital_id = null
+   where id = 'paste-your-user-id-here';
+   ```
+4. Sign out and back in — you'll now land on `/super-admin` instead of the
+   hospital admin dashboard.
 
 ---
 
@@ -40,14 +64,9 @@ Go to **Database → Replication** in Supabase, and make sure the tables you car
 cp .env.example .env.local
 ```
 
-Open `.env.local` and fill in the three Supabase values from above, plus your Groq key:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-GROQ_API_KEY=your-groq-key
-```
+Fill in the 4 values (3 Supabase + 1 Groq) — same as before, no new env
+vars were added for the auth system, since Supabase Auth uses the same
+project credentials.
 
 ---
 
@@ -58,41 +77,50 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 — you'll land on the login screen. Enter any mobile number, any 4-digit OTP (this is a demo login, see caveats below), then pick a role. If you pick **Patient**, you'll choose which seeded patient profile to act as.
+Open http://localhost:3000 → redirects to `/login`. Click **"Create an
+account"** to sign up — pick "I'm setting up a new hospital" for your
+first account, which creates both a hospital and your Admin login in one
+step.
+
+To add a doctor, nurse, or patient: as the Hospital Admin, go to **Staff &
+Onboarding** to find your hospital's join code, then have that person sign
+up via the matching path and paste in the code.
 
 ---
 
-## 5. Deploy to Vercel (or Netlify)
+## 5. Deploy to Vercel
 
-### Vercel (recommended — built by the makers of Next.js)
-1. Push this project to a GitHub repo.
-2. Go to https://vercel.com/new and import the repo.
-3. In the project's **Environment Variables** settings, add the same 4 variables from your `.env.local`.
-4. Deploy. Vercel auto-detects Next.js — no extra config needed.
+Same as before — push to GitHub, import into Vercel, add the same 4
+environment variables, deploy.
 
-### Netlify
-1. Push to GitHub, then "Add new site → Import an existing project" in Netlify.
-2. Build command: `npm run build` — Netlify's Next.js runtime plugin handles the rest automatically for most Next.js 14 App Router projects.
-3. Add the same 4 environment variables in **Site settings → Environment variables**.
-
-Either way: your Groq key and Supabase service role key only ever run on the server (inside `/app/api/*` routes), so they're never exposed to anyone visiting the site.
+One addition for this version: after deploying, do the **Super Admin
+bootstrap** (section 2 above) against your production Supabase project the
+same way — it's a one-time manual step regardless of environment.
 
 ---
 
-## 6. Project structure
+## 6. Project structure (what's new in this version)
 
 ```
 app/
-  login/              Role + demo OTP login
-  admin/              Hospital Admin: dashboard, patients, appointments, billing, pharmacy, AI insights
-  doctor/             Doctor: queue, consultation (with real AI diagnosis suggestions), AI Scribe
-  nurse/              Nurse: live ward/bed map, task list
-  patient/            Patient: home, booking, records, family vault, health card, AI chat assistant
-  api/                All backend logic (Next.js API routes) — every database & AI call goes through here
-components/           Shared UI: icons, shell/layout pieces, language + session context
-hooks/                Reusable hooks: realtime subscriptions, toast notifications, route guards
-lib/                  Supabase clients (admin/browser), Groq AI helper functions, fetch wrapper
-supabase/schema.sql   Full database schema + seed data — run this once in Supabase's SQL editor
+  login/, signup/        Real email/password auth — signup has 3 paths:
+                          new hospital / join as staff / join as patient
+  super-admin/            New role: onboard hospitals, suspend/activate, see join codes
+  admin/ doctor/ nurse/ patient/   Same as before, now driven by real auth + hospital scoping
+  api/auth/me, api/auth/signup     New auth endpoints
+  api/hospitals/          New: Super Admin hospital management
+  api/...                 Every existing route now requires a real signed-in
+                           session and scopes all reads/writes to the
+                           caller's hospital_id (see lib/auth.js)
+lib/auth.js               Server-side session verification — the real
+                           source of truth for "who is this, what's their
+                           role, which hospital." Never trust client input
+                           for this.
+lib/withErrors.js         Shared error-handling wrapper for API routes
+components/AuthContext.js Real auth context (replaces the old demo
+                           SessionContext, which has been deleted)
+supabase/schema_v2.sql    New multi-hospital schema with RLS + auth triggers
+supabase/seed_demo_hospital.sql   Seed data for the demo hospital
 ```
 
 ---
@@ -100,27 +128,27 @@ supabase/schema.sql   Full database schema + seed data — run this once in Supa
 ## 7. What's real vs. what's still a demo
 
 **Genuinely real and working:**
-- All data (patients, appointments, consultations, prescriptions, beds, pharmacy, tasks, billing) lives in your real Supabase Postgres database and persists permanently.
-- Actions are connected across roles: when a Doctor saves a consultation, it marks the appointment completed, creates a prescription, and adds a health record the Patient can see — all in one real database transaction-ish flow.
-- Nurse bed changes (admit/discharge/cleaning) update in real time for Admin's occupancy view via Supabase Realtime (with a polling fallback).
-- The AI Medical Scribe, AI diagnosis suggestions, and AI Health Assistant chat all make real calls to Groq's LLM API and return real, freshly generated responses — not canned text.
-- The patient AI chat has a basic safety layer: messages matching self-harm/crisis language patterns get routed to crisis helpline information instead of the general model.
+- Real email + password authentication via Supabase Auth — actual accounts, actual sessions stored in cookies, actual password hashing. No more "any phone number, any OTP" demo login.
+- Roles are enforced **server-side** on every API call (`lib/auth.js`), not just hidden in the UI — a Doctor account genuinely cannot read another hospital's data or act as Admin, even by calling the API directly.
+- Multi-hospital data isolation via Postgres Row Level Security — every table is scoped to `hospital_id`, and RLS policies enforce this at the database level as a second layer beneath the API-level checks.
+- Super Admin can onboard hospitals, see cross-hospital stats, and suspend/activate accounts.
+- Hospital Admin gets a join code (their hospital's ID) to share with staff/patients for self-serve signup into their specific hospital.
+- All the AI features (Scribe, diagnosis suggestions, patient chat) and live cross-role data sync from the previous version still work the same way, now correctly scoped per-hospital.
 
-**Still a demo / not production-ready — be aware before using this for real patients:**
-- **Login is not real authentication.** Any mobile number + any 4-digit code logs you in, and anyone can pick any role including "Doctor" or "Admin." There's no password, no verification, no per-user accounts. Before handling real patient data, replace this with proper auth (Supabase Auth supports real OTP/SMS verification and you can add role-based access control on top).
-- **Database access policies are wide open** (`USING (true)`) so the app works simply for a demo. Before going live with real PII, you'll want row-level security policies that actually restrict who can read/write what.
-- **AI suggestions are unreviewed by a real clinician** — they're explicitly labeled as suggestions for a doctor to review, but you are responsible for how this is used in any real clinical setting. This is not a regulated medical device.
-- **No payments integration** — billing screens calculate totals but don't process real payments (no Razorpay/UPI wired in yet).
-- **No SMS/WhatsApp sending** — those buttons currently just show a confirmation toast; wiring up Twilio/WhatsApp Business API is a follow-up step.
+**Still not production-grade — read before handling real patient data:**
+- **No real SMS OTP.** You asked to keep this free, so this version uses email + password instead of phone OTP. If you want real SMS OTP later, that requires a paid provider (Twilio, MSG91) — Firebase Phone Auth also isn't actually free despite the name, it requires Firebase's Blaze plan.
+- **No email verification enforced.** Signup creates accounts with `email_confirm: true` (auto-confirmed) so you don't need to wire up email sending to test the app. For a real launch, you'd want to flip that and require real email verification.
+- **Hospital join codes are just the hospital's UUID.** This is simple and works, but it's not a true invite-token system (no expiry, no single-use, no revocation). Anyone who has the code can join as a doctor/nurse/patient claiming any name. Fine for a pilot with trusted staff; not fine for a public-facing launch — a real invite-link system with expiring tokens is a sensible next step.
+- **No payments, no real SMS/WhatsApp sending** — same as before.
+- **The auth wiring (lib/auth.js, @supabase/ssr usage) has been built carefully against Supabase's documented APIs but not run against a live Supabase project from this environment** (no internet access in the sandbox this was built in). It's the part of this update most likely to need a small fix on first real run — if sign-in/sign-up doesn't work, check the browser console and your Supabase project's Authentication logs first, and send me the exact error.
 
 ---
 
 ## 8. Sensible next steps, roughly in order of impact
 
-1. Replace demo login with real Supabase Auth (email/phone OTP) + role-based access control.
-2. Lock down RLS policies once real auth exists.
-3. Wire up Razorpay for real billing/payments.
-4. Build out a full record view (reports/prescriptions/appointments) for each family member in the vault — right now adding a member correctly creates and links their record, but tapping into their full history isn't built yet.
-5. Add WhatsApp/SMS sending (Twilio or similar) for invoices and appointment reminders.
-
-If you want help with any of these, just ask — each one is a reasonably scoped follow-up rather than a rebuild.
+1. Test the full signup → login → role-scoped-data flow end to end against your real Supabase project; fix whatever the first real run surfaces.
+2. Replace UUID join codes with real expiring/single-use invite tokens.
+3. Turn on real email verification.
+4. Add real SMS OTP via Twilio/MSG91 if you decide it's worth the cost later.
+5. Wire up Razorpay for real billing/payments.
+6. Lock down `email_confirm` and consider adding password reset flows (Supabase Auth supports this natively — `supabase.auth.resetPasswordForEmail()`).

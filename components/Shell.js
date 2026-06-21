@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { I } from '@/components/icons';
 import { T, t, useLang } from '@/components/LangContext';
-import { useSession } from '@/components/SessionContext';
+import { useAuth } from '@/components/AuthContext';
 
 export const ROLES = [
   { id: 'admin', label: 'Admin', te: 'అడ్మిన్', icon: 'building', ctx: 'ctx-admin', path: '/admin' },
@@ -14,28 +14,46 @@ export const ROLES = [
 
 export function RoleRail({ activeRole }) {
   const { lang, setLang } = useLang();
-  const { setSession } = useSession();
+  const { user, signOut } = useAuth();
   const router = useRouter();
+
+  // With real auth, people only ever see the rail item for their own role
+  // — there's no "switch role" picker anymore, since role is a property of
+  // the signed-in account, not a UI choice. Super Admin gets its own
+  // separate item since it's not in the ROLES list (it has no hospital).
+  const myRoleEntry = ROLES.find((r) => r.id === user?.role);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/login');
+  };
 
   return (
     <div className="rail">
       <div className="rail-logo">
         <Image src="/logo.png" alt="MediFlow" width={38} height={38} style={{ objectFit: 'cover' }} />
       </div>
-      {ROLES.map((r) => {
-        const Icon = I[r.icon];
-        const active = activeRole === r.id;
-        return (
-          <button key={r.id} className={`rail-btn ${active ? 'active' : ''} ${r.ctx}`} onClick={() => router.push(r.path)}>
-            <Icon size={21} strokeWidth={active ? 2.2 : 1.75} />
-            <span><T en={r.label} te={r.te} /></span>
-          </button>
-        );
-      })}
+      {user?.role === 'super_admin' && (
+        <button className="rail-btn active ctx-admin" onClick={() => router.push('/super-admin')}>
+          <I.shieldCheck size={21} strokeWidth={2.2} />
+          <span><T en="Super Admin" te="సూపర్ అడ్మిన్" /></span>
+        </button>
+      )}
+      {myRoleEntry && (
+        <button className={`rail-btn active ${myRoleEntry.ctx}`} onClick={() => router.push(myRoleEntry.path)}>
+          {(() => { const Icon = I[myRoleEntry.icon]; return <Icon size={21} strokeWidth={2.2} />; })()}
+          <span><T en={myRoleEntry.label} te={myRoleEntry.te} /></span>
+        </button>
+      )}
       <div className="rail-spacer" />
-      <button className="rail-btn rail-logout" onClick={() => { setSession(null); router.push('/login'); }}>
+      {user && (
+        <div style={{ fontSize: 10, color: '#8FA0B8', textAlign: 'center', padding: '0 4px 8px', lineHeight: 1.3 }}>
+          {user.hospitalName || (user.role === 'super_admin' ? 'All Hospitals' : '')}
+        </div>
+      )}
+      <button className="rail-btn rail-logout" onClick={handleSignOut}>
         <I.logout size={20} strokeWidth={1.75} />
-        <span><T en="Exit" te="నిష్క్రమణ" /></span>
+        <span><T en="Sign Out" te="సైన్ అవుట్" /></span>
       </button>
       <div className="rail-lang">
         <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>

@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { I } from '@/components/icons';
 
 export default function AdminPage() {
-  const { ready } = useRequireRole('admin');
+  const { ready, session } = useRequireRole('admin');
   const { lang } = useLang();
   const toast = useToast();
   const [tab, setTab] = useState('dashboard');
@@ -21,13 +21,14 @@ export default function AdminPage() {
     { id: 'billing', label: 'Billing', te: 'బిల్లింగ్' },
     { id: 'pharmacy', label: 'Pharmacy', te: 'ఫార్మసీ' },
     { id: 'analytics', label: 'AI Insights', te: 'AI అంతర్దృష్టులు' },
+    { id: 'staff', label: 'Staff & Onboarding', te: 'సిబ్బంది & ఆన్‌బోర్డింగ్' },
   ];
 
   if (!ready) return <CenterLoader label="Loading…" labelTe="లోడ్ అవుతోంది…" />;
 
   return (
     <>
-      <TopBar roleLabel="Hospital Admin" roleTe="హాస్పిటల్ అడ్మిన్" title="Sri Sai Multispeciality Hospital" titleTe="శ్రీ సాయి మల్టీస్పెషాలిటీ హాస్పిటల్" initials="SK" />
+      <TopBar roleLabel="Hospital Admin" roleTe="హాస్పిటల్ అడ్మిన్" title={session?.hospitalName || ''} initials={session?.fullName?.[0] || 'A'} />
       <SubNav tabs={tabs} active={tab} setActive={setTab} />
       <div className="scroll-area">
         {tab === 'dashboard' && <Dashboard />}
@@ -36,6 +37,7 @@ export default function AdminPage() {
         {tab === 'billing' && <Billing toast={toast} />}
         {tab === 'pharmacy' && <Pharmacy />}
         {tab === 'analytics' && <Analytics />}
+        {tab === 'staff' && <Staff session={session} toast={toast} />}
       </div>
       {toast.node}
     </>
@@ -407,6 +409,52 @@ function Pharmacy() {
             <span className={`pill ${m.status === 'low' ? 'amber' : 'green'}`}>{m.status === 'low' ? t(lang, 'Low', 'తక్కువ') : t(lang, 'OK', 'సరిపోతుంది')}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function Staff({ session, toast }) {
+  const { lang } = useLang();
+  const [doctors, setDoctors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => { api('/doctors').then((d) => setDoctors(d || [])).catch(() => {}).finally(() => setLoading(false)); }, []);
+
+  const copyCode = () => {
+    navigator.clipboard?.writeText(session?.hospitalId || '');
+    toast.show(t(lang, 'Hospital code copied', 'హాస్పిటల్ కోడ్ కాపీ చేయబడింది'));
+  };
+
+  return (
+    <div className="fade-in" style={{ maxWidth: 800 }}>
+      <div className="card" style={{ padding: 22, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 8 }}><T en="Hospital Join Code" te="హాస్పిటల్ జాయిన్ కోడ్" /></h3>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-500)', marginBottom: 14, lineHeight: 1.5 }}>
+          <T en="Share this code with doctors, nurses, or patients so they can join your hospital when they sign up." te="డాక్టర్లు, నర్సులు లేదా పేషెంట్లు సైన్ అప్ చేసేటప్పుడు మీ హాస్పిటల్‌లో చేరడానికి ఈ కోడ్‌ని పంచుకోండి." />
+        </p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input readOnly value={session?.hospitalId || ''} style={{ flex: 1, padding: '10px 12px', borderRadius: 9, border: '1px solid var(--line)', fontSize: 12.5, fontFamily: 'monospace', color: 'var(--ink-700)' }} />
+          <button className="btn btn-primary" onClick={copyCode}><T en="Copy" te="కాపీ" /></button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', fontWeight: 700, fontSize: 13.5 }}><T en="Doctors" te="డాక్టర్లు" /></div>
+        {loading ? <CenterLoader label="Loading…" labelTe="లోడ్ అవుతోంది…" /> : (
+          <>
+            {doctors.map((d, i) => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 18px', borderTop: i ? '1px solid var(--line)' : 'none' }}>
+                <div className="avatar" style={{ width: 36, height: 36, fontSize: 12, background: d.color }}>{d.avatar_initials}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{d.name}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{d.speciality}</div>
+                </div>
+              </div>
+            ))}
+            {doctors.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}><T en="No doctors have joined yet — share your hospital code above." te="ఇంకా డాక్టర్లు చేరలేదు — పైన మీ హాస్పిటల్ కోడ్‌ని పంచుకోండి." /></div>}
+          </>
+        )}
       </div>
     </div>
   );

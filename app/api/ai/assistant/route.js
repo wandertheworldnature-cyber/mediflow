@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { answerPatientQuestion } from '@/lib/groq';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { requireUser, AuthError } from '@/lib/auth';
+import { withErrors } from '@/lib/withErrors';
 
 // Lightweight keyword check for self-harm / crisis language. If matched, we
 // skip the general-purpose model and return India-specific crisis resources
@@ -30,60 +32,66 @@ const CRISIS_RESPONSE_TE = `మీరు ఎదుర్కొంటున్న
 
 మీరు ఒంటరిగా దీన్ని ఎదుర్కోవాల్సిన అవసరం లేదు — దయచేసి మీరు నమ్మే వ్యక్తితో లేదా మానసిక ఆరోగ్య నిపుణుడితో ఈరోజే మాట్లాడండి.`;
 
-export async function POST(req) {
-  try {
-    const { patient_id, question, lang = 'en' } = await req.json();
-    if (!question || !question.trim()) {
-      return NextResponse.json({ error: 'Question is required.' }, { status: 400 });
-    }
-
-    const sb = supabaseAdmin();
-
-    let history = [];
-    if (patient_id) {
-      const { data } = await sb
-        .from('ai_chat_messages')
-        .select('role, content')
-        .eq('patient_id', patient_id)
-        .order('created_at', { ascending: true })
-        .limit(12);
-      history = data || [];
-
-      await sb.from('ai_chat_messages').insert({ patient_id, role: 'user', content: question, lang });
-    }
-
-    let answer;
-    if (isCrisisMessage(question)) {
-      answer = lang === 'te' ? CRISIS_RESPONSE_TE : CRISIS_RESPONSE_EN;
-    } else {
-      answer = await answerPatientQuestion({ question, lang, history });
-    }
-
-    if (patient_id) {
-      await sb.from('ai_chat_messages').insert({ patient_id, role: 'assistant', content: answer, lang });
-    }
-
-    return NextResponse.json({ data: { answer } });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+export const POST = withErrors(async (req) => {
+  const user = await requireUser();
+  const { patient_id, question, lang = 'en' } = await req.json();
+  if (!question || !question.trim()) {
+    return NextResponse.json({ error: 'Question is required.' }, { status: 400 });
   }
-}
 
-export async function GET(req) {
-  try {
-    const sb = supabaseAdmin();
-    const { searchParams } = new URL(req.url);
-    const patientId = searchParams.get('patient_id');
-    if (!patientId) return NextResponse.json({ data: [] });
+  // Patients can only chat as themselves; staff can look up any patient in
+  // their hospital (e.g. a nurse pulling up chat history during a visit).
+  if (user.role === 'patient' && patient_id !== user.patientId) {
+    throw new AuthError('You can only access your own chat.', 403);
+  }
 
-    const { data, error } = await sb
+  const sb = supabaseAdmin();
+
+  let history = [];
+  if (patient_id) {
+    const { data } = await sb
       .from('ai_chat_messages')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    return NextResponse.json({ data });
-  } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+      .select('role, content')
+      .eq('hospital_id', user.hospitalId)
+      .eq('patient_id', patient_id)
+      .order('created_at', { ascending: true })
+      .limit(12);
+    history = data || [];
+
+    await sb.from('ai_chat_messages').insert({ hospital_id: user.hospitalId, patient_id, role: 'user', content: question, lang });
   }
-}
+
+  let answer;
+  if (isCrisisMessage(question)) {
+    answer = lang === 'te' ? CRISIS_RESPONSE_TE : CRISIS_RESPONSE_EN;
+  } else {
+    answer = await answerPatientQuestion({ question, lang, history });
+  }
+
+  if (patient_id) {
+    await sb.from('ai_chat_messages').insert({ hospital_id: user.hospitalId, patient_id, role: 'assistant', content: answer, lang });
+  }
+
+  return NextResponse.json({ data: { answer } });
+});
+
+export const GET = withErrors(async (req) => {
+  const user = await requireUser();
+  const sb = supabaseAdmin();
+  const { searchParams } = new URL(req.url);
+  const patientId = searchParams.get('patient_id');
+  if (!patientId) return NextResponse.json({ data: [] });
+
+  if (user.role === 'patient' && patientId !== user.patientId) {
+    throw new AuthError('You can only access your own chat.', 403);
+  }
+
+  const { data, error } = await sb
+    .from('ai_chat_messages')
+    .select('*')
+    .eq('hospital_id', user.hospitalId)
+    .eq('patient_id', patientId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return NextResponse.json({ data });
+});

@@ -1,4 +1,8 @@
 -- =====================================================================
+-- ⚠️ DEPRECATED — superseded by schema_v2.sql + seed_demo_hospital.sql
+-- This was the original single-hospital, no-auth schema. It's kept here
+-- only for reference. Do not run this for new setups — use schema_v2.sql.
+-- =====================================================================
 -- MediFlow — Supabase schema
 -- Run this entire file in: Supabase Dashboard -> SQL Editor -> New query
 -- =====================================================================

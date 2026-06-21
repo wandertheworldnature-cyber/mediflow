@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { I } from '@/components/icons';
 
 export default function NursePage() {
-  const { ready } = useRequireRole('nurse');
+  const { ready, session } = useRequireRole('nurse');
   const toast = useToast();
   const [tab, setTab] = useState('wards');
 
@@ -22,7 +22,7 @@ export default function NursePage() {
 
   return (
     <>
-      <TopBar roleLabel="Nurse" roleTe="నర్స్" title="Sister Anjali" titleTe="సిస్టర్ అంజలి" initials="A" />
+      <TopBar roleLabel="Nurse" roleTe="నర్స్" title={session?.fullName || ''} initials={session?.fullName?.[0] || 'N'} />
       <SubNav tabs={tabs} active={tab} setActive={setTab} />
       <div className="scroll-area">
         {tab === 'wards' && <WardMap toast={toast} />}
