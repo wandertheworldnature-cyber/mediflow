@@ -43,8 +43,11 @@ export default function SignupPage() {
         body.state = form.state;
       } else {
         body.hospitalId = form.hospitalId;
-        body.role = form.role;
-        if (form.role === 'doctor') body.speciality = form.speciality;
+        // path === 'patient' always signs up as patient regardless of the
+        // role dropdown (which is only shown on the staff path). Without
+        // this override, the form.role default of 'doctor' leaks through.
+        body.role = path === 'patient' ? 'patient' : form.role;
+        if (body.role === 'doctor') body.speciality = form.speciality;
       }
 
       const res = await fetch('/api/auth/signup', {

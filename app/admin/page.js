@@ -33,7 +33,7 @@ export default function AdminPage() {
       <div className="scroll-area">
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'patients' && <Patients toast={toast} />}
-        {tab === 'appointments' && <Appointments />}
+        {tab === 'appointments' && <Appointments toast={toast} />}
         {tab === 'billing' && <Billing toast={toast} />}
         {tab === 'pharmacy' && <Pharmacy />}
         {tab === 'analytics' && <Analytics />}
@@ -268,10 +268,11 @@ function FormField({ label, labelTe, children }) {
 }
 const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid var(--line)', fontSize: 13.5 };
 
-function Appointments() {
+function Appointments({ toast }) {
   const { lang } = useLang();
   const [appts, setAppts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showBook, setShowBook] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -292,6 +293,11 @@ function Appointments() {
 
   return (
     <div className="fade-in" style={{ maxWidth: 900 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+        <button className="btn btn-primary" onClick={() => setShowBook(true)}>
+          <I.plus size={15} /> <T en="Book Appointment" te="అపాయింట్‌మెంట్ బుక్ చేయండి" />
+        </button>
+      </div>
       <div className="card" style={{ overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -318,14 +324,76 @@ function Appointments() {
           </tbody>
         </table>
       </div>
+      {showBook && <BookAppointmentModal onClose={() => setShowBook(false)} onSaved={() => { setShowBook(false); load(); toast?.show?.(t(lang, 'Appointment booked', 'అపాయింట్‌మెంట్ బుక్ చేయబడింది')); }} />}
+    </div>
+  );
+}
+
+function BookAppointmentModal({ onClose, onSaved }) {
+  const { lang } = useLang();
+  const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [form, setForm] = useState({ patient_id: '', doctor_id: '', appointment_time: '10:00 AM', reason: '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    Promise.all([api('/patients'), api('/doctors')]).then(([p, d]) => {
+      setPatients(p || []);
+      setDoctors(d || []);
+    }).catch(() => {});
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.patient_id || !form.doctor_id) { setError(t(lang, 'Select both patient and doctor.', 'పేషెంట్ మరియు డాక్టర్ ఎంచుకోండి.')); return; }
+    setSaving(true); setError('');
+    try {
+      await api('/appointments', { method: 'POST', body: { patient_id: form.patient_id, doctor_id: form.doctor_id, appointment_time: form.appointment_time, reason: form.reason || 'Walk-in' } });
+      onSaved();
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  };
+
+  const slots = ['9:00 AM','9:30 AM','10:00 AM','10:30 AM','11:00 AM','11:30 AM','2:00 PM','2:30 PM','3:00 PM','4:00 PM','5:00 PM'];
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,30,51,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="card fade-in" style={{ width: 420, padding: 24 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 16 }}><T en="Book Appointment" te="అపాయింట్‌మెంట్ బుక్ చేయండి" /></h3>
+        <FormField label="Patient" labelTe="పేషెంట్">
+          <select required value={form.patient_id} onChange={(e) => setForm({ ...form, patient_id: e.target.value })} style={inputStyle}>
+            <option value="">{t(lang, 'Select patient…', 'పేషెంట్‌ని ఎంచుకోండి…')}</option>
+            {patients.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.uhid}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Doctor" labelTe="డాక్టర్">
+          <select required value={form.doctor_id} onChange={(e) => setForm({ ...form, doctor_id: e.target.value })} style={inputStyle}>
+            <option value="">{t(lang, 'Select doctor…', 'డాక్టర్‌ని ఎంచుకోండి…')}</option>
+            {doctors.map((d) => <option key={d.id} value={d.id}>{d.name} — {d.speciality}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Time Slot" labelTe="సమయం">
+          <select value={form.appointment_time} onChange={(e) => setForm({ ...form, appointment_time: e.target.value })} style={inputStyle}>
+            {slots.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </FormField>
+        <FormField label="Reason" labelTe="కారణం">
+          <input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder={t(lang, 'e.g. Fever, follow-up…', 'ఉదా: జ్వరం, ఫాలో-అప్…')} style={inputStyle} />
+        </FormField>
+        {error && <div style={{ background: 'var(--red-100)', color: 'var(--red-500)', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+          <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}><T en="Cancel" te="రద్దు చేయండి" /></button>
+          <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={saving}>
+            {saving ? <T en="Booking…" te="బుక్ చేస్తోంది…" /> : <T en="Book" te="బుక్ చేయండి" />}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
 
 function Billing({ toast }) {
   const { lang } = useLang();
-  const [patients, setPatients] = useState([]);
-  const [selected, setSelected] = useState(null);
   const [items, setItems] = useState({ consultation_fee: 600, lab_charges: 0, medicine_charges: 0, room_charges: 0 });
   const [saving, setSaving] = useState(false);
 
