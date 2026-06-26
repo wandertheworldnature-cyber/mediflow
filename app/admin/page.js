@@ -333,7 +333,12 @@ function BookAppointmentModal({ onClose, onSaved }) {
   const { lang } = useLang();
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
-  const [form, setForm] = useState({ patient_id: '', doctor_id: '', appointment_time: '10:00 AM', reason: '' });
+  const [mode, setMode] = useState('existing'); // 'existing' | 'new'
+  const [form, setForm] = useState({
+    patient_id: '', doctor_id: '', appointment_time: '10:00 AM', reason: '',
+    // new patient fields
+    name: '', mobile: '', age: '', gender: 'M',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -346,26 +351,78 @@ function BookAppointmentModal({ onClose, onSaved }) {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.patient_id || !form.doctor_id) { setError(t(lang, 'Select both patient and doctor.', 'పేషెంట్ మరియు డాక్టర్ ఎంచుకోండి.')); return; }
+    if (!form.doctor_id) { setError(t(lang, 'Select a doctor.', 'డాక్టర్‌ని ఎంచుకోండి.')); return; }
     setSaving(true); setError('');
     try {
-      await api('/appointments', { method: 'POST', body: { patient_id: form.patient_id, doctor_id: form.doctor_id, appointment_time: form.appointment_time, reason: form.reason || 'Walk-in' } });
+      let patientId = form.patient_id;
+
+      // If walk-in patient, create them first then book
+      if (mode === 'new') {
+        if (!form.name) { setError(t(lang, 'Patient name is required.', 'పేషెంట్ పేరు అవసరం.')); setSaving(false); return; }
+        const newPatient = await api('/patients', {
+          method: 'POST',
+          body: { name: form.name, mobile: form.mobile || null, age: form.age ? Number(form.age) : null, gender: form.gender, status: 'OPD' },
+        });
+        patientId = newPatient.id;
+      }
+
+      if (!patientId) { setError(t(lang, 'Select or create a patient.', 'పేషెంట్‌ని ఎంచుకోండి లేదా సృష్టించండి.')); setSaving(false); return; }
+
+      await api('/appointments', {
+        method: 'POST',
+        body: { patient_id: patientId, doctor_id: form.doctor_id, appointment_time: form.appointment_time, reason: form.reason || 'Walk-in' },
+      });
       onSaved();
     } catch (err) { setError(err.message); } finally { setSaving(false); }
   };
 
-  const slots = ['9:00 AM','9:30 AM','10:00 AM','10:30 AM','11:00 AM','11:30 AM','2:00 PM','2:30 PM','3:00 PM','4:00 PM','5:00 PM'];
+  const slots = ['8:00 AM','8:30 AM','9:00 AM','9:30 AM','10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','2:00 PM','2:30 PM','3:00 PM','3:30 PM','4:00 PM','4:30 PM','5:00 PM','5:30 PM'];
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,30,51,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="card fade-in" style={{ width: 420, padding: 24 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="card fade-in" style={{ width: 460, padding: 24, maxHeight: '90vh', overflowY: 'auto' }}>
         <h3 style={{ fontSize: 15, marginBottom: 16 }}><T en="Book Appointment" te="అపాయింట్‌మెంట్ బుక్ చేయండి" /></h3>
-        <FormField label="Patient" labelTe="పేషెంట్">
-          <select required value={form.patient_id} onChange={(e) => setForm({ ...form, patient_id: e.target.value })} style={inputStyle}>
-            <option value="">{t(lang, 'Select patient…', 'పేషెంట్‌ని ఎంచుకోండి…')}</option>
-            {patients.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.uhid}</option>)}
-          </select>
-        </FormField>
+
+        {/* Patient mode toggle */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button type="button" onClick={() => setMode('existing')} className={`btn btn-sm ${mode === 'existing' ? 'btn-primary' : 'btn-ghost'}`}>
+            <T en="Existing Patient" te="ఇప్పటికే ఉన్న పేషెంట్" />
+          </button>
+          <button type="button" onClick={() => setMode('new')} className={`btn btn-sm ${mode === 'new' ? 'btn-primary' : 'btn-ghost'}`}>
+            <T en="Walk-in / New Patient" te="వాక్-ఇన్ / కొత్త పేషెంట్" />
+          </button>
+        </div>
+
+        {mode === 'existing' ? (
+          <FormField label="Patient" labelTe="పేషెంట్">
+            <select value={form.patient_id} onChange={(e) => setForm({ ...form, patient_id: e.target.value })} style={inputStyle}>
+              <option value="">{t(lang, 'Select patient…', 'పేషెంట్‌ని ఎంచుకోండి…')}</option>
+              {patients.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.uhid}</option>)}
+            </select>
+          </FormField>
+        ) : (
+          <>
+            <FormField label="Patient Name" labelTe="పేషెంట్ పేరు">
+              <input required={mode === 'new'} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t(lang, 'Full name', 'పూర్తి పేరు')} style={inputStyle} />
+            </FormField>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <FormField label="Mobile" labelTe="మొబైల్">
+                <input value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} style={inputStyle} />
+              </FormField>
+              <FormField label="Age" labelTe="వయసు">
+                <input type="number" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} style={inputStyle} />
+              </FormField>
+              <FormField label="Gender" labelTe="లింగం">
+                <select value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })} style={inputStyle}>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                  <option value="O">Other</option>
+                </select>
+              </FormField>
+            </div>
+          </>
+        )}
+
         <FormField label="Doctor" labelTe="డాక్టర్">
           <select required value={form.doctor_id} onChange={(e) => setForm({ ...form, doctor_id: e.target.value })} style={inputStyle}>
             <option value="">{t(lang, 'Select doctor…', 'డాక్టర్‌ని ఎంచుకోండి…')}</option>
@@ -377,14 +434,15 @@ function BookAppointmentModal({ onClose, onSaved }) {
             {slots.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </FormField>
-        <FormField label="Reason" labelTe="కారణం">
-          <input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder={t(lang, 'e.g. Fever, follow-up…', 'ఉదా: జ్వరం, ఫాలో-అప్…')} style={inputStyle} />
+        <FormField label="Reason / Chief Complaint" labelTe="కారణం / ప్రధాన ఫిర్యాదు">
+          <input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder={t(lang, 'e.g. Fever, follow-up, routine check…', 'ఉదా: జ్వరం, ఫాలో-అప్…')} style={inputStyle} />
         </FormField>
+
         {error && <div style={{ background: 'var(--red-100)', color: 'var(--red-500)', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{error}</div>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
           <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}><T en="Cancel" te="రద్దు చేయండి" /></button>
           <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={saving}>
-            {saving ? <T en="Booking…" te="బుక్ చేస్తోంది…" /> : <T en="Book" te="బుక్ చేయండి" />}
+            {saving ? <T en="Booking…" te="బుక్ చేస్తోంది…" /> : <T en="Book Appointment" te="అపాయింట్‌మెంట్ బుక్ చేయండి" />}
           </button>
         </div>
       </form>
@@ -394,10 +452,12 @@ function BookAppointmentModal({ onClose, onSaved }) {
 
 function Billing({ toast }) {
   const { lang } = useLang();
+  const [patients, setPatients] = useState([]);
+  const [selected, setSelected] = useState(null);
   const [items, setItems] = useState({ consultation_fee: 600, lab_charges: 0, medicine_charges: 0, room_charges: 0 });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { api('/patients').then(setPatients).catch(() => {}); }, []);
+  useEffect(() => { api('/patients').then((d) => setPatients(d || [])).catch(() => {}); }, []);
 
   const total = Object.values(items).reduce((s, v) => s + (Number(v) || 0), 0);
 
@@ -447,37 +507,131 @@ function Pharmacy() {
   const { lang } = useLang();
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState(null); // { id, quantity }
 
-  useEffect(() => { api('/pharmacy').then(setStock).catch(() => {}).finally(() => setLoading(false)); }, []);
+  const load = useCallback(async () => {
+    try {
+      const data = await api('/pharmacy');
+      setStock(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const updateQty = async (m) => {
+    try {
+      await api(`/pharmacy/${m.id}`, { method: 'PATCH', body: { quantity: Number(editing.quantity) } });
+      setEditing(null);
+      load();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
   const lowStock = stock.filter((m) => m.status === 'low').length;
 
   if (loading) return <CenterLoader label="Loading pharmacy…" labelTe="లోడ్ అవుతోంది…" />;
 
   return (
-    <div className="fade-in" style={{ maxWidth: 800 }}>
+    <div className="fade-in" style={{ maxWidth: 900 }}>
       {lowStock > 0 && (
         <div style={{ background: 'var(--amber-100)', border: '1px solid #F0C36A', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#A26200', marginBottom: 18, display: 'flex', gap: 9, alignItems: 'center' }}>
           <I.alert size={16} /> <T en={`Low Stock Alerts — ${lowStock} medicines need reordering.`} te={`తక్కువ స్టాక్ హెచ్చరికలు — ${lowStock} మందులు మళ్లీ ఆర్డర్ చేయాలి.`} />
         </div>
       )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+          <I.plus size={15} /> <T en="Add Medicine" te="మందు చేర్చండి" />
+        </button>
+      </div>
       <div className="card">
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', fontWeight: 700, fontSize: 13.5 }}><T en="Medicine Inventory" te="మందుల ఇన్వెంటరీ" /></div>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--line)', fontWeight: 700, fontSize: 13.5 }}>
+          <T en="Medicine Inventory" te="మందుల ఇన్వెంటరీ" />
+        </div>
+        {stock.length === 0 && (
+          <div style={{ padding: 30, textAlign: 'center', color: 'var(--ink-500)', fontSize: 13 }}>
+            <T en="No medicines in inventory yet. Click 'Add Medicine' to get started." te="ఇంకా మందులు లేవు. ప్రారంభించడానికి 'మందు చేర్చండి' క్లిక్ చేయండి." />
+          </div>
+        )}
         {stock.map((m, i) => (
           <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 18px', borderTop: i ? '1px solid var(--line)' : 'none' }}>
             <I.pill size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 13.5 }}>{m.medicine_name}</div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}><T en="Expiry" te="గడువు" />: {m.expiry_date}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}><T en="Expiry" te="గడువు" />: {m.expiry_date || '—'}</div>
             </div>
             <div style={{ textAlign: 'right', marginRight: 8 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{m.quantity}</div>
-              <div style={{ fontSize: 11, color: 'var(--ink-500)' }}><T en="units" te="యూనిట్లు" /></div>
+              {editing?.id === m.id ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="number" value={editing.quantity} onChange={(e) => setEditing({ ...editing, quantity: e.target.value })}
+                    style={{ width: 80, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--line)', textAlign: 'right', fontSize: 13 }} autoFocus />
+                  <button className="btn btn-primary btn-sm" onClick={() => updateQty(m)}><I.check size={13} /></button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)}><I.close size={13} /></button>
+                </div>
+              ) : (
+                <button onClick={() => setEditing({ id: m.id, quantity: m.quantity })} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', cursor: 'pointer', background: 'none', border: 'none' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{m.quantity}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-500)' }}><T en="units (click to edit)" te="యూనిట్లు (నొక్కి మార్చండి)" /></div>
+                </button>
+              )}
             </div>
-            <span className={`pill ${m.status === 'low' ? 'amber' : 'green'}`}>{m.status === 'low' ? t(lang, 'Low', 'తక్కువ') : t(lang, 'OK', 'సరిపోతుంది')}</span>
+            <span className={`pill ${m.status === 'low' ? 'amber' : 'green'}`}>
+              {m.status === 'low' ? t(lang, 'Low', 'తక్కువ') : t(lang, 'OK', 'సరిపోతుంది')}
+            </span>
           </div>
         ))}
       </div>
+      {showAdd && <AddMedicineModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load(); }} />}
+    </div>
+  );
+}
+
+function AddMedicineModal({ onClose, onSaved }) {
+  const { lang } = useLang();
+  const [form, setForm] = useState({ medicine_name: '', quantity: '', expiry_date: '', low_stock_threshold: 50 });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try {
+      await api('/pharmacy', { method: 'POST', body: { ...form, quantity: Number(form.quantity), low_stock_threshold: Number(form.low_stock_threshold) } });
+      onSaved();
+    } catch (err) { setError(err.message); } finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,30,51,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="card fade-in" style={{ width: 400, padding: 24 }}>
+        <h3 style={{ fontSize: 15, marginBottom: 16 }}><T en="Add Medicine" te="మందు చేర్చండి" /></h3>
+        <FormField label="Medicine Name" labelTe="మందు పేరు">
+          <input required value={form.medicine_name} onChange={(e) => setForm({ ...form, medicine_name: e.target.value })} style={inputStyle} />
+        </FormField>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <FormField label="Quantity" labelTe="పరిమాణం">
+            <input required type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} style={inputStyle} />
+          </FormField>
+          <FormField label="Low Stock Alert At" labelTe="హెచ్చరిక పరిమితి">
+            <input type="number" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: e.target.value })} style={inputStyle} />
+          </FormField>
+        </div>
+        <FormField label="Expiry Date" labelTe="గడువు తేదీ">
+          <input type="date" value={form.expiry_date} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} style={inputStyle} />
+        </FormField>
+        {error && <div style={{ background: 'var(--red-100)', color: 'var(--red-500)', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, marginBottom: 14 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}><T en="Cancel" te="రద్దు చేయండి" /></button>
+          <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} disabled={saving}>
+            {saving ? <T en="Saving…" te="సేవ్ అవుతోంది…" /> : <T en="Add" te="చేర్చండి" />}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
