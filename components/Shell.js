@@ -63,18 +63,42 @@ export function RoleRail({ activeRole }) {
   );
 }
 
-export function TopBar({ roleLabel, roleTe, title, titleTe, initials, children }) {
+export function TopBar({ roleLabel, roleTe, title, titleTe, initials, children, pendingCount = 0, onBellClick }) {
   const { lang } = useLang();
   return (
-    <div className="topbar">
-      <div className="topbar-left">
-        <span className="role-badge">{t(lang, roleLabel, roleTe)}</span>
-        <span className="topbar-title">{t(lang, title, titleTe || title)}</span>
-      </div>
-      <div className="topbar-right">
-        {children}
-        <button className="icon-btn"><I.bell size={18} /></button>
-        <div className="avatar">{initials}</div>
+    <div className="topbar" style={{ height: 'auto', padding: '0 28px', flexDirection: 'column', alignItems: 'stretch' }}>
+      {/* Hospital name banner */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--blue-900) 0%, var(--teal-700) 100%)',
+        margin: '0 -28px',
+        padding: '10px 28px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            background: 'rgba(255,255,255,0.18)', color: '#fff', padding: '3px 8px', borderRadius: 5,
+          }}>{t(lang, roleLabel, roleTe)}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em', fontFamily: 'Manrope, sans-serif' }}>
+            {t(lang, title, titleTe || title)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {children}
+          <button className="icon-btn" onClick={onBellClick} style={{ position: 'relative', background: 'rgba(255,255,255,0.12)', color: '#fff' }}>
+            <I.bell size={18} />
+            {pendingCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -4, right: -4, width: 18, height: 18,
+                background: 'var(--red-500)', borderRadius: '50%', fontSize: 10, fontWeight: 800,
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>{pendingCount > 9 ? '9+' : pendingCount}</span>
+            )}
+          </button>
+          <div className="avatar" style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '2px solid rgba(255,255,255,0.3)' }}>{initials}</div>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { TopBar, SubNav, StatCard, CenterLoader } from '@/components/Shell';
+import { TopBar, SubNav, StatCard, CenterLoader, Spinner } from '@/components/Shell';
 import { T, t, useLang } from '@/components/LangContext';
 import { useRequireRole } from '@/hooks/useRequireRole';
 import { useToast } from '@/hooks/useToast';
@@ -13,6 +13,31 @@ export default function AdminPage() {
   const { lang } = useLang();
   const toast = useToast();
   const [tab, setTab] = useState('dashboard');
+  const [pending, setPending] = useState([]);
+  const [showNotifs, setShowNotifs] = useState(false);
+
+  const loadPending = useCallback(async () => {
+    try { const d = await api('/notifications'); setPending(d || []); } catch {}
+  }, []);
+
+  useEffect(() => { if (ready) loadPending(); }, [ready, loadPending]);
+  useRealtimeTable('appointments', loadPending);
+
+  const approveAppt = async (id) => {
+    try {
+      await api(`/appointments/${id}`, { method: 'PATCH', body: { status: 'confirmed' } });
+      toast.show(t(lang, 'Appointment confirmed', 'అపాయింట్‌మెంట్ నిర్ధారించబడింది'));
+      loadPending();
+    } catch (err) { toast.show(err.message, 'error'); }
+  };
+
+  const rejectAppt = async (id) => {
+    try {
+      await api(`/appointments/${id}`, { method: 'PATCH', body: { status: 'cancelled' } });
+      toast.show(t(lang, 'Appointment rejected', 'అపాయింట్‌మెంట్ తిరస్కరించబడింది'));
+      loadPending();
+    } catch (err) { toast.show(err.message, 'error'); }
+  };
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', te: 'డాష్‌బోర్డ్' },
@@ -28,18 +53,61 @@ export default function AdminPage() {
 
   return (
     <>
-      <TopBar roleLabel="Hospital Admin" roleTe="హాస్పిటల్ అడ్మిన్" title={session?.hospitalName || ''} initials={session?.fullName?.[0] || 'A'} />
+      <TopBar
+        roleLabel="Hospital Admin" roleTe="హాస్పిటల్ అడ్మిన్"
+        title={session?.hospitalName || ''} initials={session?.fullName?.[0] || 'A'}
+        pendingCount={pending.length} onBellClick={() => setShowNotifs(true)}
+      />
       <SubNav tabs={tabs} active={tab} setActive={setTab} />
       <div className="scroll-area">
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'patients' && <Patients toast={toast} />}
-        {tab === 'appointments' && <Appointments toast={toast} />}
+        {tab === 'appointments' && <Appointments toast={toast} onPendingChange={loadPending} />}
         {tab === 'billing' && <Billing toast={toast} />}
-        {tab === 'pharmacy' && <Pharmacy />}
+        {tab === 'pharmacy' && <Pharmacy toast={toast} />}
         {tab === 'analytics' && <Analytics />}
         {tab === 'staff' && <Staff session={session} toast={toast} />}
       </div>
       {toast.node}
+
+      {/* Notification panel */}
+      {showNotifs && (
+        <div onClick={() => setShowNotifs(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,30,51,0.4)', zIndex: 300 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            position: 'fixed', top: 0, right: 0, width: 380, height: '100vh',
+            background: '#fff', boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: 15 }}><T en="Pending Approvals" te="పెండింగ్ ఆమోదాలు" /></h3>
+              <button className="icon-btn" onClick={() => setShowNotifs(false)}><I.close size={18} /></button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+              {pending.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--ink-500)', fontSize: 13 }}>
+                  <I.check size={28} style={{ marginBottom: 8, opacity: 0.4 }} />
+                  <p><T en="No pending appointments." te="పెండింగ్ అపాయింట్‌మెంట్లు లేవు." /></p>
+                </div>
+              ) : pending.map((a) => (
+                <div key={a.id} className="card" style={{ padding: 14, marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 2 }}>{a.patients?.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-500)', marginBottom: 8 }}>
+                    {a.doctors?.name} · {a.appointment_time} · {a.appointment_date}
+                  </div>
+                  {a.reason && <div style={{ fontSize: 12, color: 'var(--ink-700)', marginBottom: 10, background: 'var(--bg)', padding: '6px 10px', borderRadius: 7 }}>{a.reason}</div>}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', color: 'var(--red-500)' }} onClick={() => rejectAppt(a.id)}>
+                      <I.close size={13} /> <T en="Reject" te="తిరస్కరించు" />
+                    </button>
+                    <button className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center' }} onClick={() => approveAppt(a.id)}>
+                      <I.check size={13} /> <T en="Confirm" te="నిర్ధారించు" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -455,7 +523,6 @@ function Billing({ toast }) {
   const [patients, setPatients] = useState([]);
   const [selected, setSelected] = useState(null);
   const [items, setItems] = useState({ consultation_fee: 600, lab_charges: 0, medicine_charges: 0, room_charges: 0 });
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => { api('/patients').then((d) => setPatients(d || [])).catch(() => {}); }, []);
 
@@ -463,11 +530,56 @@ function Billing({ toast }) {
 
   const generateInvoice = () => {
     if (!selected) return toast.show(t(lang, 'Select a patient first', 'ముందు పేషెంట్‌ని ఎంచుకోండి'), 'error');
-    toast.show(t(lang, 'Invoice generated', 'ఇన్వాయిస్ రూపొందించబడింది'));
+    const win = window.open('', '_blank');
+    const date = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    win.document.write(`<!DOCTYPE html><html><head><title>Invoice – ${selected.name}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:Arial,sans-serif;padding:40px;color:#0F1E33;max-width:700px;margin:0 auto;}
+  .header{background:linear-gradient(135deg,#02469E,#01807F);color:#fff;padding:28px;border-radius:10px;margin-bottom:28px;}
+  .header h1{font-size:22px;margin-bottom:4px;}
+  .header p{font-size:12px;opacity:0.85;}
+  .section{margin-bottom:20px;}
+  .section h3{font-size:13px;font-weight:700;color:#5C6E84;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;}
+  .row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #E4EAF1;font-size:14px;}
+  .total-row{display:flex;justify-content:space-between;padding:14px 0;font-size:18px;font-weight:800;color:#02469E;border-top:2px solid #0F1E33;margin-top:6px;}
+  .badge{background:#E3F7F4;color:#01807F;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;}
+  @media print{button{display:none!important;}.no-print{display:none!important;}}
+</style></head><body>
+<div class="header">
+  <h1>MediFlow Invoice</h1>
+  <p>Invoice Date: ${date} &nbsp;|&nbsp; UHID: ${selected.uhid || '—'}</p>
+</div>
+<div class="section">
+  <h3>Patient Details</h3>
+  <div class="row"><span>Name</span><span><strong>${selected.name}</strong></span></div>
+  <div class="row"><span>UHID</span><span>${selected.uhid || '—'}</span></div>
+  <div class="row"><span>Mobile</span><span>${selected.mobile || '—'}</span></div>
+</div>
+<div class="section">
+  <h3>Charges</h3>
+  <div class="row"><span>Consultation Fee</span><span>₹${Number(items.consultation_fee || 0).toLocaleString('en-IN')}</span></div>
+  <div class="row"><span>Lab Charges</span><span>₹${Number(items.lab_charges || 0).toLocaleString('en-IN')}</span></div>
+  <div class="row"><span>Medicine Charges</span><span>₹${Number(items.medicine_charges || 0).toLocaleString('en-IN')}</span></div>
+  <div class="row"><span>Room Charges</span><span>₹${Number(items.room_charges || 0).toLocaleString('en-IN')}</span></div>
+  <div class="total-row"><span>Total Amount</span><span>₹${total.toLocaleString('en-IN')}</span></div>
+</div>
+<p style="font-size:11px;color:#94A3B5;margin-top:30px;">Generated by MediFlow · Thank you for choosing our hospital.</p>
+<br/>
+<button onclick="window.print()" style="background:#02469E;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">🖨️ Print Invoice</button>
+</body></html>`);
+    win.document.close();
+    toast.show(t(lang, 'Invoice ready — click Print in the new tab', 'ఇన్వాయిస్ సిద్ధం — కొత్త ట్యాబ్‌లో ప్రింట్ క్లిక్ చేయండి'));
   };
+
   const sendWhatsapp = () => {
     if (!selected) return toast.show(t(lang, 'Select a patient first', 'ముందు పేషెంట్‌ని ఎంచుకోండి'), 'error');
-    toast.show(t(lang, 'Sent via WhatsApp', 'వాట్సాప్ ద్వారా పంపబడింది'));
+    const phone = selected.mobile?.replace(/\D/g, '');
+    const msg = encodeURIComponent(
+      `*MediFlow Invoice*\nPatient: ${selected.name}\nUHID: ${selected.uhid || '—'}\n\nConsultation: ₹${items.consultation_fee || 0}\nLab: ₹${items.lab_charges || 0}\nMedicines: ₹${items.medicine_charges || 0}\nRoom: ₹${items.room_charges || 0}\n\n*Total: ₹${total.toLocaleString('en-IN')}*\n\nThank you for visiting our hospital.`
+    );
+    const url = phone ? `https://wa.me/91${phone}?text=${msg}` : `https://wa.me/?text=${msg}`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -495,15 +607,22 @@ function Billing({ toast }) {
           <span className="display" style={{ fontWeight: 800, fontSize: 19, color: 'var(--accent)' }}>₹{total.toLocaleString('en-IN')}</span>
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={generateInvoice}><I.file size={14} /> <T en="Generate Invoice" te="ఇన్వాయిస్ రూపొందించండి" /></button>
-          <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={sendWhatsapp}><T en="Send WhatsApp" te="వాట్సాప్ పంపండి" /></button>
+          <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={generateInvoice}>
+            <I.file size={14} /> <T en="Generate & Print" te="ఇన్వాయిస్ & ప్రింట్" />
+          </button>
+          <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={sendWhatsapp}>
+            <T en="Send WhatsApp" te="వాట్సాప్ పంపండి" />
+          </button>
         </div>
+        <p style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 10 }}>
+          <T en="WhatsApp opens the app with a pre-filled message. Patient's mobile number is used if available." te="వాట్సాప్ యాప్ ముందే నింపిన సందేశంతో తెరుచుకుంటుంది." />
+        </p>
       </div>
     </div>
   );
 }
 
-function Pharmacy() {
+function Pharmacy({ toast }) {
   const { lang } = useLang();
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -535,6 +654,33 @@ function Pharmacy() {
 
   const lowStock = stock.filter((m) => m.status === 'low').length;
 
+  const handleExcelUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const XLSX = await import('xlsx');
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      let added = 0;
+      for (const row of rows) {
+        const name = row['Medicine Name'] || row['medicine_name'] || row['Name'] || row['name'];
+        const qty = Number(row['Quantity'] || row['quantity'] || row['Qty'] || row['qty'] || 0);
+        if (!name) continue;
+        try {
+          await api('/pharmacy', { method: 'POST', body: { medicine_name: String(name), quantity: qty, expiry_date: row['Expiry Date'] || row['expiry_date'] || null, low_stock_threshold: Number(row['Low Stock'] || row['low_stock_threshold'] || 50) } });
+          added++;
+        } catch {}
+      }
+      toast.show(t(lang, `${added} medicines imported from Excel`, `${added} మందులు Excel నుండి దిగుమతి చేయబడ్డాయి`));
+      load();
+    } catch (err) {
+      toast.show(t(lang, 'Failed to read Excel file. Make sure columns are: Medicine Name, Quantity, Expiry Date, Low Stock', 'Excel ఫైల్ చదవడం విఫలమైంది.'), 'error');
+    }
+    e.target.value = '';
+  };
+
   if (loading) return <CenterLoader label="Loading pharmacy…" labelTe="లోడ్ అవుతోంది…" />;
 
   return (
@@ -544,7 +690,14 @@ function Pharmacy() {
           <I.alert size={16} /> <T en={`Low Stock Alerts — ${lowStock} medicines need reordering.`} te={`తక్కువ స్టాక్ హెచ్చరికలు — ${lowStock} మందులు మళ్లీ ఆర్డర్ చేయాలి.`} />
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginBottom: 14, alignItems: 'center' }}>
+        <label style={{ cursor: 'pointer' }}>
+          <span className="btn btn-ghost"><I.download size={15} /> <T en="Import Excel" te="Excel దిగుమతి" /></span>
+          <input type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleExcelUpload} />
+        </label>
+        <a href="data:text/csv;charset=utf-8,Medicine Name,Quantity,Expiry Date,Low Stock%0AParacetamol 500mg,100,2027-12-01,50" download="pharmacy_template.csv" className="btn btn-ghost btn-sm">
+          <T en="Download Template" te="టెంప్లేట్ డౌన్‌లోడ్" />
+        </a>
         <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
           <I.plus size={15} /> <T en="Add Medicine" te="మందు చేర్చండి" />
         </button>

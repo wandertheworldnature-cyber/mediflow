@@ -53,7 +53,9 @@ export const POST = withErrors(async (req) => {
       appointment_date: body.appointment_date || new Date().toISOString().slice(0, 10),
       appointment_time: body.appointment_time,
       reason: body.reason || null,
-      status: body.status || 'confirmed',
+      // Patients booking themselves → pending until admin confirms.
+      // Admin/staff booking walk-ins → confirmed immediately.
+      status: user.role === 'patient' ? 'pending' : (body.status || 'confirmed'),
     })
     .select('*, patients(id, name, age, gender, uhid), doctors(id, name, speciality, color)')
     .single();

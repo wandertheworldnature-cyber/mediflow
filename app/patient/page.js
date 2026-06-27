@@ -96,7 +96,6 @@ function PatientHome({ patient, toast, goTo, onChanged }) {
   const { lang } = useLang();
   const [sosOpen, setSosOpen] = useState(false);
   const upcoming = (patient.appointments || []).filter((a) => a.status !== 'completed' && a.status !== 'cancelled').slice(0, 3);
-
   return (
     <div className="fade-in" style={{ maxWidth: 880 }}>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 22 }}>
@@ -120,6 +119,8 @@ function PatientHome({ patient, toast, goTo, onChanged }) {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{a.doctors?.name}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--ink-500)' }}>{a.doctors?.speciality}</div>
+                {a.status === 'pending' && <span className="pill amber" style={{ marginTop: 4 }}><T en="⏳ Awaiting confirmation" te="⏳ నిర్ధారణ కోసం వేచి ఉంది" /></span>}
+                {a.status === 'confirmed' && <span className="pill green" style={{ marginTop: 4 }}><T en="✓ Confirmed" te="✓ నిర్ధారించబడింది" /></span>}
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--accent)' }}>{a.appointment_date}</div>
@@ -247,7 +248,7 @@ function BookingModal({ doctor, patient, onClose, toast, onChanged }) {
           reason: reason || 'General consultation',
         },
       });
-      toast.show(t(lang, `Booked with ${doctor.name} at ${slot}`, `${slot} కు బుక్ చేయబడింది`));
+      toast.show(t(lang, `Request sent to ${doctor.name} at ${slot} — awaiting hospital confirmation`, `${slot} కు అభ్యర్థన పంపబడింది — ఆసుపత్రి నిర్ధారణ కోసం వేచి ఉంది`));
       onChanged();
       onClose();
     } catch (err) {
