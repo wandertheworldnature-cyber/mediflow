@@ -2,10 +2,20 @@
 import { useEffect, useRef } from 'react';
 import { supabaseBrowser } from '@/lib/supabaseBrowser';
 
+let channelCounter = 0;
+
 // Subscribes to Postgres changes on a table via Supabase Realtime, and calls
 // onChange whenever a row is inserted/updated/deleted. This is what makes
 // "Doctor completes a consult -> Admin sees it live" actually work without
 // the Admin needing to manually refresh.
+//
+// Multiple components can independently subscribe to the same table (e.g.
+// the Admin page's notification bell AND the Appointments tab both watch
+// "appointments"). Each call gets its own uniquely-named channel — reusing
+// the same channel name across independent subscriptions causes Supabase's
+// client to throw "cannot add postgres_changes callbacks ... after
+// subscribe()", since a channel's listeners must all be attached before
+// its single .subscribe() call.
 //
 // NOTE: Realtime requires the table to be added to the `supabase_realtime`
 // publication. By default Supabase enables this for all tables you create
@@ -23,8 +33,9 @@ export function useRealtimeTable(table, onChange, { pollMs = 15000 } = {}) {
     let pollTimer;
 
     if (sb) {
+      const uniqueName = `realtime:${table}:${++channelCounter}`;
       channel = sb
-        .channel(`realtime:${table}`)
+        .channel(uniqueName)
         .on('postgres_changes', { event: '*', schema: 'public', table }, (payload) => {
           cbRef.current?.(payload);
         })
